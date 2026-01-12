@@ -4766,6 +4766,7 @@ async def clear_ai_history(
 import csv
 import httpx
 import re as regex_module
+from openpyxl import load_workbook
 
 GOOGLE_SHEET_ID = "1gO9i0IuoReM0yto7GqQlIMWjdrzDToDWJ9dQ8z0badE"
 
@@ -4773,30 +4774,153 @@ class GoogleSheetsSyncRequest(BaseModel):
     ambulatorio: Ambulatorio
     sheet_id: Optional[str] = None
     year: int = 2026  # Anno per le date DD/MM del foglio
+    clear_existing: bool = True  # Cancella appuntamenti esistenti prima di sincronizzare
+
+def parse_sheet_data(ws, year):
+    """Parse una singola scheda Excel e restituisce appuntamenti e pazienti"""
+    appointments = []
+    patients = set()
+    
+    # Struttura del foglio:
+    # Riga 3: date in formato DD/MM
+    # Riga 6: tipi PICC/MEDICAZIONI
+    # Righe 7+: orari (col 2) e nomi pazienti
+    
+    # Mappa colonne a date
+    date_for_col = {}
+    current_date = None
+    
+    for col in range(1, ws.max_column + 1):
+        cell_value = ws.cell(row=3, column=col).value
+        if cell_value and "/" in str(cell_value):
+            try:
+                cell_str = str(cell_value).strip()
+                parts = cell_str.split("/")
+                day = int(parts[0])
+                month = int(parts[1])
+                current_date = f"{year}-{month:02d}-{day:02d}"
+            except:
+                pass
+        if current_date:
+            date_for_col[col] = current_date
+    
+    # Mappa colonne a tipi PICC/MED
+    column_mapping = {}
+    date_boundaries = sorted(date_for_col.keys())
+    
+    for col in range(1, ws.max_column + 1):
+        cell_value = ws.cell(row=6, column=col).value
+        if not cell_value:
+            continue
+        tipo_cell = str(cell_value).strip().upper()
+        
+        # Trova la data più vicina a sinistra
+        closest_date = None
+        for boundary in reversed(date_boundaries):
+            if boundary <= col:
+                closest_date = date_for_col[boundary]
+                break
+        
+        if closest_date:
+            if "PICC" in tipo_cell and "MED" not in tipo_cell:
+                column_mapping[col] = {"date": closest_date, "tipo": "PICC"}
+            elif "MED" in tipo_cell:
+                column_mapping[col] = {"date": closest_date, "tipo": "MED"}
+    
+    # Parse appuntamenti dalle righe successive
+    for row in range(7, ws.max_row + 1):
+        # Trova l'orario nella colonna B (colonna 2)
+        ora_cell = ws.cell(row=row, column=2).value
+        ora = None
+        if ora_cell:
+            ora_str = str(ora_cell).strip()
+            if ":" in ora_str and regex_module.match(r'^\d{1,2}:\d{2}$', ora_str):
+                ora = ora_str if len(ora_str) == 5 else f"0{ora_str}"
+        
+        if not ora:
+            continue
+        
+        # Scansiona le colonne mappate
+        for col, mapping in column_mapping.items():
+            cell_value = ws.cell(row=row, column=col).value
+            if cell_value:
+                cell = str(cell_value).strip()
+                if cell and cell not in ["", "-"]:
+                    # Può contenere più nomi separati da / o ,
+                    names = regex_module.split(r'[/,]', cell)
+                    for name in names:
+                        name = name.strip()
+                        if name and len(name) > 1:
+                            # Ignora note
+                            if any(kw in name.lower() for kw in ["controllo", "rim ", "non funzionante", "picc port", "idline", "clody im", "spatoliatore"]):
+                                continue
+                            
+                            parts = name.split()
+                            if parts:
+                                cognome = parts[0].capitalize()
+                                nome = " ".join(parts[1:]).capitalize() if len(parts) > 1 else ""
+                                
+                                patients.add((cognome, nome))
+                                appointments.append({
+                                    "date": mapping["date"],
+                                    "ora": ora,
+                                    "tipo": mapping["tipo"],
+                                    "cognome": cognome,
+                                    "nome": nome
+                                })
+    
+    return appointments, patients
 
 @api_router.post("/sync/google-sheets")
 async def sync_from_google_sheets(
     data: GoogleSheetsSyncRequest,
     payload: dict = Depends(verify_token)
 ):
-    """Sincronizza appuntamenti da Google Sheets"""
+    """Sincronizza appuntamenti da TUTTI i fogli del Google Sheets"""
     if data.ambulatorio.value not in payload["ambulatori"]:
         raise HTTPException(status_code=403, detail="Non hai accesso a questo ambulatorio")
     
     sheet_id = data.sheet_id or GOOGLE_SHEET_ID
+    year = data.year
     
     try:
-        # Scarica il foglio come CSV
-        csv_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv"
+        # Scarica il foglio come XLSX (contiene tutti i fogli)
+        xlsx_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=xlsx"
         
         async with httpx.AsyncClient(follow_redirects=True) as http_client:
-            response = await http_client.get(csv_url, timeout=30.0)
+            response = await http_client.get(xlsx_url, timeout=60.0)
             if response.status_code != 200:
                 raise HTTPException(status_code=400, detail=f"Impossibile accedere al foglio Google (status {response.status_code}). Verifica che sia pubblico.")
         
-        # Parse CSV
-        csv_content = response.text
-        lines = list(csv.reader(io.StringIO(csv_content)))
+        # Carica il workbook Excel
+        wb = load_workbook(io.BytesIO(response.content))
+        
+        # Cancella appuntamenti esistenti se richiesto
+        if data.clear_existing:
+            await db.appointments.delete_many({
+                "ambulatorio": data.ambulatorio.value,
+                "note": "Importato da Google Sheets"
+            })
+        
+        # Parse tutti i fogli
+        all_appointments = []
+        all_patients = set()
+        sheets_processed = []
+        
+        for sheet_name in wb.sheetnames:
+            ws = wb[sheet_name]
+            # Salta fogli vuoti o con pochi dati
+            if ws.max_row < 7 or ws.max_column < 5:
+                continue
+            
+            appointments, patients = parse_sheet_data(ws, year)
+            if appointments:
+                all_appointments.extend(appointments)
+                all_patients.update(patients)
+                sheets_processed.append(sheet_name)
+                logger.info(f"Foglio '{sheet_name}': {len(appointments)} appuntamenti")
+        
+        logger.info(f"Totale: {len(all_appointments)} appuntamenti da {len(sheets_processed)} fogli")
         
         # Struttura del foglio:
         # Riga 3 (indice 2): date in formato DD/MM
