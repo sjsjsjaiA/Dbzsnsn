@@ -4996,8 +4996,8 @@ async def preview_google_sheets_sync(
     try:
         csv_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv"
         
-        async with httpx.AsyncClient() as client:
-            response = await client.get(csv_url, timeout=30.0)
+        async with httpx.AsyncClient(follow_redirects=True) as http_client:
+            response = await http_client.get(csv_url, timeout=30.0)
             if response.status_code != 200:
                 raise HTTPException(status_code=400, detail="Impossibile accedere al foglio Google")
         
