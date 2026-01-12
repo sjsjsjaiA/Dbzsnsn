@@ -1253,7 +1253,8 @@ export default function AgendaPage() {
               </p>
               <ul className="text-sm text-blue-700 mt-2 space-y-1">
                 <li>• Nuovi pazienti non presenti nel sistema</li>
-                <li>• Appuntamenti PICC e MED dal foglio</li>
+                <li>• Appuntamenti PICC e MED per la <strong>settimana corrente</strong></li>
+                <li>• Lunedì del foglio → Lunedì di questa settimana</li>
                 <li>• Gli appuntamenti esistenti non verranno duplicati</li>
               </ul>
             </div>
