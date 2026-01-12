@@ -4767,14 +4767,52 @@ import csv
 import httpx
 import re as regex_module
 from openpyxl import load_workbook
+from rapidfuzz import fuzz, process
 
 GOOGLE_SHEET_ID = "1gO9i0IuoReM0yto7GqQlIMWjdrzDToDWJ9dQ8z0badE"
+SIMILARITY_THRESHOLD = 75  # Soglia di similarità per considerare un potenziale errore
 
 class GoogleSheetsSyncRequest(BaseModel):
     ambulatorio: Ambulatorio
     sheet_id: Optional[str] = None
-    year: int = 2026  # Anno per le date DD/MM del foglio
-    clear_existing: bool = True  # Cancella appuntamenti esistenti prima di sincronizzare
+    year: int = 2026
+    clear_existing: bool = True
+    # Mappatura correzioni: {"nome_errato": "nome_corretto"}
+    name_corrections: Optional[dict] = None
+
+class SimilarNameConflict(BaseModel):
+    original_name: str  # Nome trovato nel foglio
+    similar_names: List[str]  # Nomi simili esistenti o nel foglio
+    occurrences: int  # Quante volte appare nel foglio
+    dates: List[str]  # Date in cui appare
+
+class GoogleSheetsSyncPreview(BaseModel):
+    ambulatorio: Ambulatorio
+    sheet_id: Optional[str] = None
+    year: int = 2026
+
+def find_similar_names(name: str, existing_names: set, all_names: set, threshold: int = SIMILARITY_THRESHOLD) -> List[str]:
+    """Trova nomi simili usando fuzzy matching"""
+    similar = []
+    name_lower = name.lower().strip()
+    
+    # Cerca tra i nomi esistenti nel database
+    for existing in existing_names:
+        existing_lower = existing.lower().strip()
+        if name_lower != existing_lower:
+            ratio = fuzz.ratio(name_lower, existing_lower)
+            if ratio >= threshold:
+                similar.append(existing)
+    
+    # Cerca tra tutti i nomi nel foglio
+    for other in all_names:
+        other_lower = other.lower().strip()
+        if name_lower != other_lower and other not in similar:
+            ratio = fuzz.ratio(name_lower, other_lower)
+            if ratio >= threshold:
+                similar.append(other)
+    
+    return similar
 
 def parse_sheet_data(ws, year):
     """Parse una singola scheda Excel e restituisce appuntamenti e pazienti"""
