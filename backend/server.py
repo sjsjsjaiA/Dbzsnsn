@@ -4892,8 +4892,8 @@ async def sync_from_google_sheets(
             if response.status_code != 200:
                 raise HTTPException(status_code=400, detail=f"Impossibile accedere al foglio Google (status {response.status_code}). Verifica che sia pubblico.")
         
-        # Carica il workbook Excel
-        wb = load_workbook(io.BytesIO(response.content))
+        # Carica il workbook Excel (data_only=True per valutare le formule)
+        wb = load_workbook(io.BytesIO(response.content), data_only=True)
         
         # Cancella appuntamenti esistenti se richiesto
         if data.clear_existing:
