@@ -4841,13 +4841,16 @@ async def sync_from_google_sheets(
             if current_day_offset is not None:
                 day_for_col[col_idx] = current_day_offset
         
-        # Calcola le date effettive per ogni colonna
+        # Calcola le date effettive per ogni colonna (prima settimana)
         date_for_col = {}
         for col_idx, day_offset in day_for_col.items():
             target_date = monday_ref + timedelta(days=day_offset)
-            date_for_col[col_idx] = target_date.strftime("%Y-%m-%d")
+            date_for_col[col_idx] = {
+                "date": target_date.strftime("%Y-%m-%d"),
+                "day_offset": day_offset  # Salva l'offset per replicare nelle settimane successive
+            }
         
-        logger.info(f"Date mapping (starting from {monday_ref}): {date_for_col}")
+        logger.info(f"Date mapping (starting from {monday_ref}, {data.weeks} weeks): {date_for_col}")
         
         # Ora associa le colonne ai tipi PICC/MED
         # La data si propaga alle colonne successive fino alla prossima data
@@ -4859,22 +4862,23 @@ async def sync_from_google_sheets(
                 continue
                 
             # Trova la data più vicina a sinistra
-            closest_date = None
+            closest_info = None
             for boundary in reversed(date_boundaries):
                 if boundary <= col_idx:
-                    closest_date = date_for_col[boundary]
+                    closest_info = date_for_col[boundary]
                     break
             
-            if closest_date:
+            if closest_info:
                 if "PICC" in tipo_cell and "MED" not in tipo_cell:
-                    column_mapping[col_idx] = {"date": closest_date, "tipo": "PICC"}
+                    column_mapping[col_idx] = {"day_offset": closest_info["day_offset"], "tipo": "PICC"}
                 elif "MED" in tipo_cell:
-                    column_mapping[col_idx] = {"date": closest_date, "tipo": "MED"}
+                    column_mapping[col_idx] = {"day_offset": closest_info["day_offset"], "tipo": "MED"}
         
         logger.info(f"Column mapping: {column_mapping}")
         
         # Parse appuntamenti dalle righe successive (dalla riga 7 = indice 6)
-        appointments_to_create = []
+        # Salviamo i "template" degli appuntamenti (senza data specifica)
+        appointment_templates = []
         patients_to_create = set()  # Set di (cognome, nome) per evitare duplicati
         
         for row_idx, row in enumerate(lines[6:], start=6):  # Inizia dalla riga 7
@@ -4910,13 +4914,27 @@ async def sync_from_google_sheets(
                                     nome = " ".join(parts[1:]).capitalize() if len(parts) > 1 else ""
                                     
                                     patients_to_create.add((cognome, nome))
-                                    appointments_to_create.append({
-                                        "date": mapping["date"],
+                                    appointment_templates.append({
+                                        "day_offset": mapping["day_offset"],
                                         "ora": ora,
                                         "tipo": mapping["tipo"],
                                         "cognome": cognome,
                                         "nome": nome
                                     })
+        
+        # Ora crea gli appuntamenti per tutte le settimane richieste
+        appointments_to_create = []
+        for week in range(data.weeks):
+            week_monday = monday_ref + timedelta(weeks=week)
+            for template in appointment_templates:
+                apt_date = week_monday + timedelta(days=template["day_offset"])
+                appointments_to_create.append({
+                    "date": apt_date.strftime("%Y-%m-%d"),
+                    "ora": template["ora"],
+                    "tipo": template["tipo"],
+                    "cognome": template["cognome"],
+                    "nome": template["nome"]
+                })
         
         # Crea/trova pazienti e appuntamenti
         created_patients = 0
