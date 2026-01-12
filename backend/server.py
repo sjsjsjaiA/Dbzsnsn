@@ -4800,10 +4800,12 @@ async def sync_from_google_sheets(
         
         # Struttura del foglio:
         # Riga 3 (indice 2): date in formato DD/MM
+        # Riga 5 (indice 4): giorni della settimana (lunedi, martedi, etc.)
         # Riga 6 (indice 5): tipi PICC/MEDICAZIONI
         # Righe 7+ (indice 6+): orari (col 1) e nomi pazienti
         
         dates_row = lines[2] if len(lines) > 2 else []
+        weekdays_row = lines[4] if len(lines) > 4 else []  # Riga 5 = indice 4
         types_row = lines[5] if len(lines) > 5 else []  # Riga 6 = indice 5
         
         # Mappa colonne a date e tipi
