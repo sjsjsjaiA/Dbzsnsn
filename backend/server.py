@@ -4772,7 +4772,7 @@ GOOGLE_SHEET_ID = "1gO9i0IuoReM0yto7GqQlIMWjdrzDToDWJ9dQ8z0badE"
 class GoogleSheetsSyncRequest(BaseModel):
     ambulatorio: Ambulatorio
     sheet_id: Optional[str] = None
-    use_current_week: bool = True  # Se True, mappa le date alla settimana corrente
+    start_date: Optional[str] = None  # Data del lunedì da cui partire (YYYY-MM-DD), default: lunedì settimana corrente
 
 @api_router.post("/sync/google-sheets")
 async def sync_from_google_sheets(
