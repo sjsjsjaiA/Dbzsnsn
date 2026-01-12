@@ -4782,7 +4782,7 @@ def parse_sheet_data(ws, year):
     patients = set()
     
     # Struttura del foglio:
-    # Riga 3: date in formato DD/MM
+    # Riga 3: date (possono essere datetime o stringhe DD/MM)
     # Riga 6: tipi PICC/MEDICAZIONI
     # Righe 7+: orari (col 2) e nomi pazienti
     
@@ -4792,13 +4792,22 @@ def parse_sheet_data(ws, year):
     
     for col in range(1, ws.max_column + 1):
         cell_value = ws.cell(row=3, column=col).value
-        if cell_value and "/" in str(cell_value):
+        if cell_value:
             try:
-                cell_str = str(cell_value).strip()
-                parts = cell_str.split("/")
-                day = int(parts[0])
-                month = int(parts[1])
-                current_date = f"{year}-{month:02d}-{day:02d}"
+                # Gestisce sia datetime che stringhe
+                if hasattr(cell_value, 'strftime'):
+                    # È un oggetto datetime
+                    current_date = cell_value.strftime("%Y-%m-%d")
+                elif "/" in str(cell_value):
+                    # Formato DD/MM
+                    cell_str = str(cell_value).strip()
+                    parts = cell_str.split("/")
+                    day = int(parts[0])
+                    month = int(parts[1])
+                    current_date = f"{year}-{month:02d}-{day:02d}"
+                elif "-" in str(cell_value):
+                    # Già in formato YYYY-MM-DD
+                    current_date = str(cell_value).split()[0]  # Rimuove eventuale orario
             except:
                 pass
         if current_date:
@@ -4833,9 +4842,16 @@ def parse_sheet_data(ws, year):
         ora_cell = ws.cell(row=row, column=2).value
         ora = None
         if ora_cell:
-            ora_str = str(ora_cell).strip()
-            if ":" in ora_str and regex_module.match(r'^\d{1,2}:\d{2}$', ora_str):
-                ora = ora_str if len(ora_str) == 5 else f"0{ora_str}"
+            # Gestisce sia time objects che stringhe
+            if hasattr(ora_cell, 'strftime'):
+                ora = ora_cell.strftime("%H:%M")
+            else:
+                ora_str = str(ora_cell).strip()
+                # Rimuove secondi se presenti (08:30:00 -> 08:30)
+                if ":" in ora_str:
+                    parts = ora_str.split(":")
+                    if len(parts) >= 2:
+                        ora = f"{int(parts[0]):02d}:{parts[1][:2]}"
         
         if not ora:
             continue
