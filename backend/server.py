@@ -4977,7 +4977,7 @@ async def sync_from_google_sheets(
                 created_patients += 1
         
         # Crea appuntamenti
-        for apt in appointments_to_create:
+        for apt in all_appointments:
             patient_id = patient_id_map.get((apt["cognome"], apt["nome"]))
             if not patient_id:
                 continue
@@ -5015,11 +5015,12 @@ async def sync_from_google_sheets(
         
         return {
             "success": True,
-            "message": f"Sincronizzazione completata",
+            "message": f"Sincronizzazione completata da {len(sheets_processed)} fogli",
+            "sheets_processed": sheets_processed,
             "created_patients": created_patients,
             "created_appointments": created_appointments,
             "skipped_appointments": skipped_appointments,
-            "total_parsed": len(appointments_to_create)
+            "total_parsed": len(all_appointments)
         }
         
     except httpx.TimeoutException:
