@@ -4772,8 +4772,7 @@ GOOGLE_SHEET_ID = "1gO9i0IuoReM0yto7GqQlIMWjdrzDToDWJ9dQ8z0badE"
 class GoogleSheetsSyncRequest(BaseModel):
     ambulatorio: Ambulatorio
     sheet_id: Optional[str] = None
-    start_date: Optional[str] = None  # Data del lunedì da cui partire (YYYY-MM-DD)
-    weeks: int = 4  # Numero di settimane da sincronizzare (default: 4 = 1 mese)
+    year: int = 2026  # Anno per le date DD/MM del foglio
 
 @api_router.post("/sync/google-sheets")
 async def sync_from_google_sheets(
