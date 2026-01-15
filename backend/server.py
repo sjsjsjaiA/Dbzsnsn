@@ -110,6 +110,10 @@ class PatientCreate(BaseModel):
     # Campi per impianto PICC (opzionali, usati nella creazione batch)
     tipo_impianto: Optional[str] = None  # picc, picc_port, midline
     data_inserimento_impianto: Optional[str] = None  # YYYY-MM-DD
+    # Campi per ricetta MED
+    ricetta_med: Optional[List[str]] = None  # Prestazioni selezionate
+    quantita_med: Optional[int] = None  # Numero volte (max 24)
+    data_inizio_med: Optional[str] = None  # Data inizio (YYYY-MM-DD)
 
 class PatientUpdate(BaseModel):
     nome: Optional[str] = None
@@ -128,6 +132,10 @@ class PatientUpdate(BaseModel):
     discharge_notes: Optional[str] = None
     suspend_notes: Optional[str] = None
     lesion_markers: Optional[List[Dict[str, Any]]] = None
+    # Campi per ricetta MED
+    ricetta_med: Optional[List[str]] = None
+    quantita_med: Optional[int] = None
+    data_inizio_med: Optional[str] = None
 
 # Helper function to generate unique patient code
 def generate_patient_code(nome: str, cognome: str) -> str:
