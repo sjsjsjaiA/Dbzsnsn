@@ -5268,19 +5268,23 @@ async def analyze_google_sheets_sync(
             if response.status_code != 200:
                 raise HTTPException(status_code=400, detail="Impossibile accedere al foglio Google")
         
-        wb = load_workbook(io.BytesIO(response.content), data_only=True)
+        # Carica workbook per dati e colori
+        wb_data = load_workbook(io.BytesIO(response.content), data_only=True)
+        wb_colors = load_workbook(io.BytesIO(response.content), data_only=False)
         
         # Parse tutti i fogli
         all_appointments = []
         all_patients = set()
         sheets_processed = []
         
-        for sheet_name in wb.sheetnames:
-            ws = wb[sheet_name]
-            if ws.max_row < 7 or ws.max_column < 5:
+        for sheet_name in wb_data.sheetnames:
+            ws_data = wb_data[sheet_name]
+            ws_colors = wb_colors[sheet_name] if sheet_name in wb_colors.sheetnames else None
+            
+            if ws_data.max_row < 7 or ws_data.max_column < 5:
                 continue
             
-            appointments, patients = parse_sheet_data(ws, year)
+            appointments, patients = parse_sheet_data(ws_data, year, ws_colors)
             if appointments:
                 all_appointments.extend(appointments)
                 all_patients.update(patients)
@@ -5298,7 +5302,7 @@ async def analyze_google_sheets_sync(
         
         # Trova potenziali errori di battitura
         conflicts = []
-        processed_pairs = set()  # Per evitare duplicati
+        processed_names = set()  # Per evitare duplicati
         
         # Conta occorrenze e date per ogni nome
         name_occurrences = {}
