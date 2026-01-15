@@ -205,6 +205,13 @@ export default function PazientiPage() {
   const [piccPatientResults, setPiccPatientResults] = useState([]);
   const [searchingPicc, setSearchingPicc] = useState(false);
   const [activeSearchIndex, setActiveSearchIndex] = useState(null);
+  
+  // Ricetta MED state
+  const [editingMedPatient, setEditingMedPatient] = useState(null);
+  const [medRicetta, setMedRicetta] = useState([]);
+  const [medQuantita, setMedQuantita] = useState("");
+  const [medDataInizio, setMedDataInizio] = useState("");
+  const [medDialogOpen, setMedDialogOpen] = useState(false);
 
   const isVillaGinestre = ambulatorio === "villa_ginestre";
   const availableTypes = isVillaGinestre 
