@@ -953,7 +953,7 @@ export default function PazientiPage() {
                   <div className="patient-avatar">
                     {getInitials(patient.nome, patient.cognome)}
                   </div>
-                  <div className="patient-info">
+                  <div className="patient-info flex-1">
                     <div className="patient-name">
                       {patient.cognome} {patient.nome}
                     </div>
@@ -968,6 +968,64 @@ export default function PazientiPage() {
                         </span>
                       )}
                     </div>
+                    
+                    {/* Sezione Ricetta MED - solo per pazienti MED o PICC_MED */}
+                    {(patient.tipo === "MED" || patient.tipo === "PICC_MED") && !selectionMode && (
+                      <div className="mt-2 pt-2 border-t border-gray-100">
+                        {(patient.ricetta_med || patient.quantita_med || patient.data_inizio_med) ? (
+                          <div className="flex items-center justify-between">
+                            <div className="text-xs text-gray-600 space-y-0.5">
+                              <div className="flex items-center gap-1">
+                                <FileText className="w-3 h-3" />
+                                <span>{formatPrestazioni(patient.ricetta_med)}</span>
+                              </div>
+                              {patient.quantita_med && (
+                                <div className="flex items-center gap-1">
+                                  <Hash className="w-3 h-3" />
+                                  <span>Quantità: {patient.quantita_med}</span>
+                                </div>
+                              )}
+                              {patient.data_inizio_med && (
+                                <div className="flex items-center gap-1">
+                                  <Calendar className="w-3 h-3" />
+                                  <span>Dal: {new Date(patient.data_inizio_med).toLocaleDateString('it-IT')}</span>
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex gap-1">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6"
+                                onClick={(e) => openMedDialog(patient, e)}
+                                title="Modifica"
+                              >
+                                <Pencil className="w-3 h-3" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 text-orange-600 hover:text-orange-700 hover:bg-orange-50"
+                                onClick={(e) => resetMedSettings(patient, e)}
+                                title="Reset"
+                              >
+                                <RotateCcw className="w-3 h-3" />
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50 p-0"
+                            onClick={(e) => openMedDialog(patient, e)}
+                          >
+                            <Plus className="w-3 h-3 mr-1" />
+                            Imposta ricetta MED
+                          </Button>
+                        )}
+                      </div>
+                    )}
                   </div>
                   
                   {!selectionMode && (
