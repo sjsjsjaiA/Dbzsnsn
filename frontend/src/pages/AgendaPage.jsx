@@ -133,16 +133,76 @@ export default function AgendaPage() {
   // Google Sheets sync state
   const [syncLoading, setSyncLoading] = useState(false);
   const [syncDialogOpen, setSyncDialogOpen] = useState(false);
+  const [syncAnalyzing, setSyncAnalyzing] = useState(false);
+  const [syncConflicts, setSyncConflicts] = useState([]);
+  const [syncConflictChoices, setSyncConflictChoices] = useState({});
+  const [syncStep, setSyncStep] = useState("initial"); // initial, conflicts, syncing
 
   const isVillaGinestre = ambulatorio === "villa_ginestre";
 
-  // Sincronizza con Google Sheets
-  const handleGoogleSheetsSync = async () => {
-    setSyncLoading(true);
+  // Analizza prima di sincronizzare
+  const handleAnalyzeSync = async () => {
+    setSyncAnalyzing(true);
+    setSyncStep("analyzing");
     try {
-      const response = await apiClient.post("/sync/google-sheets", {
+      const response = await apiClient.post("/sync/google-sheets/analyze", {
         ambulatorio,
         year: currentDate.getFullYear()
+      });
+      
+      if (response.data.success) {
+        if (response.data.has_conflicts) {
+          // Ci sono conflitti da risolvere
+          setSyncConflicts(response.data.conflicts);
+          // Inizializza le scelte con i suggerimenti
+          const initialChoices = {};
+          response.data.conflicts.forEach(conflict => {
+            initialChoices[conflict.id] = conflict.suggested || conflict.options[0]?.name;
+          });
+          setSyncConflictChoices(initialChoices);
+          setSyncStep("conflicts");
+        } else {
+          // Nessun conflitto, procedi con la sincronizzazione
+          await handleGoogleSheetsSync({});
+        }
+      }
+    } catch (error) {
+      console.error("Analyze error:", error);
+      toast.error(error.response?.data?.detail || "Errore nell'analisi");
+      setSyncStep("initial");
+    } finally {
+      setSyncAnalyzing(false);
+    }
+  };
+
+  // Sincronizza con Google Sheets
+  const handleGoogleSheetsSync = async (corrections = null) => {
+    setSyncLoading(true);
+    setSyncStep("syncing");
+    try {
+      // Costruisci le correzioni dai conflitti risolti
+      let nameCorrections = corrections;
+      if (!nameCorrections && Object.keys(syncConflictChoices).length > 0) {
+        nameCorrections = {};
+        syncConflicts.forEach(conflict => {
+          const chosenName = syncConflictChoices[conflict.id];
+          if (chosenName === "KEEP_ALL") {
+            // Tieni tutti i nomi come separati - non aggiungere correzioni
+            return;
+          }
+          // Mappa tutti gli altri nomi al nome scelto
+          conflict.options.forEach(option => {
+            if (option.name !== chosenName) {
+              nameCorrections[option.name] = chosenName;
+            }
+          });
+        });
+      }
+      
+      const response = await apiClient.post("/sync/google-sheets", {
+        ambulatorio,
+        year: currentDate.getFullYear(),
+        name_corrections: nameCorrections
       });
       
       if (response.data.success) {
@@ -153,13 +213,16 @@ export default function AgendaPage() {
         );
         // Ricarica i dati
         fetchData();
+        setSyncDialogOpen(false);
+        setSyncStep("initial");
+        setSyncConflicts([]);
+        setSyncConflictChoices({});
       }
     } catch (error) {
       console.error("Sync error:", error);
       toast.error(error.response?.data?.detail || "Errore nella sincronizzazione");
     } finally {
       setSyncLoading(false);
-      setSyncDialogOpen(false);
     }
   };
 
