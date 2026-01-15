@@ -5213,40 +5213,69 @@ async def analyze_google_sheets_sync(
         for apt in all_appointments:
             full_name = f"{apt['cognome']} {apt['nome']}".strip()
             if full_name not in name_occurrences:
-                name_occurrences[full_name] = {"count": 0, "dates": set()}
+                name_occurrences[full_name] = {"count": 0, "dates": set(), "tipo": set()}
             name_occurrences[full_name]["count"] += 1
             name_occurrences[full_name]["dates"].add(apt["date"])
+            name_occurrences[full_name]["tipo"].add(apt["tipo"])
+        
+        # Trova potenziali errori di battitura
+        conflicts = []
+        processed_names = set()  # Per evitare duplicati
         
         for cognome, nome in all_patients:
             full_name = f"{cognome} {nome}".strip()
             
-            # Cerca nomi simili
-            similar = find_similar_names(full_name, existing_names, sheet_names)
+            if full_name in processed_names:
+                continue
             
-            if similar:
-                # Crea una chiave per evitare duplicati (ordina i nomi)
-                conflict_key = tuple(sorted([full_name] + similar))
-                if conflict_key not in processed_pairs:
-                    processed_pairs.add(conflict_key)
+            # Cerca nomi simili
+            similar_results = find_similar_names(full_name, existing_names, sheet_names)
+            
+            if similar_results:
+                # Marca tutti i nomi coinvolti come processati
+                processed_names.add(full_name)
+                for sim_name, _, _ in similar_results:
+                    processed_names.add(sim_name)
+                
+                # Raccogli info per tutti i nomi coinvolti
+                all_names_in_conflict = [full_name] + [s[0] for s in similar_results]
+                conflict_options = []
+                
+                for name in all_names_in_conflict:
+                    occ = name_occurrences.get(name, {"count": 0, "dates": set(), "tipo": set()})
+                    exists_in_db = name in existing_names
                     
-                    # Raccogli info per tutti i nomi coinvolti
-                    all_involved = [full_name] + similar
-                    conflict_info = {
-                        "names": [],
-                        "is_new": []
-                    }
+                    # Trova la similarità con il nome principale
+                    similarity = 100 if name == full_name else next(
+                        (s[1] for s in similar_results if s[0] == name), 0
+                    )
+                    source = "database" if exists_in_db else "foglio"
+                    if name != full_name:
+                        source = next((s[2] for s in similar_results if s[0] == name), source)
                     
-                    for name in all_involved:
-                        occ = name_occurrences.get(name, {"count": 0, "dates": set()})
-                        conflict_info["names"].append({
-                            "name": name,
-                            "occurrences": occ["count"],
-                            "dates": sorted(list(occ["dates"])) if occ["dates"] else [],
-                            "exists_in_db": name in existing_names
-                        })
-                        conflict_info["is_new"].append(name not in existing_names)
-                    
-                    conflicts.append(conflict_info)
+                    conflict_options.append({
+                        "name": name,
+                        "occurrences": occ["count"],
+                        "dates": sorted(list(occ["dates"])) if occ["dates"] else [],
+                        "tipos": sorted(list(occ["tipo"])) if occ["tipo"] else [],
+                        "exists_in_db": exists_in_db,
+                        "similarity": round(similarity, 1),
+                        "source": source
+                    })
+                
+                # Ordina per: esistente nel DB > più occorrenze > similarità
+                conflict_options.sort(key=lambda x: (
+                    -int(x["exists_in_db"]),
+                    -x["occurrences"],
+                    -x["similarity"]
+                ))
+                
+                conflicts.append({
+                    "id": str(uuid.uuid4()),
+                    "options": conflict_options,
+                    "suggested": conflict_options[0]["name"] if conflict_options else None,
+                    "reason": "Possibile errore di battitura o duplicato"
+                })
         
         return {
             "success": True,
@@ -5254,7 +5283,8 @@ async def analyze_google_sheets_sync(
             "total_patients": len(all_patients),
             "total_appointments": len(all_appointments),
             "conflicts": conflicts,
-            "has_conflicts": len(conflicts) > 0
+            "has_conflicts": len(conflicts) > 0,
+            "existing_patients_count": len(existing_names)
         }
         
     except Exception as e:
