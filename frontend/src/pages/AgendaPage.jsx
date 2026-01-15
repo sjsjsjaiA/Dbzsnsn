@@ -541,12 +541,22 @@ export default function AgendaPage() {
     setEditDialogOpen(true);
   };
 
-  // Cambia stato appuntamento
+  // Cambia stato appuntamento (con possibilità di deselezionare)
   const handleChangeStato = async (newStato) => {
     if (!editingAppointment) return;
     try {
-      await apiClient.put(`/appointments/${editingAppointment.id}`, { stato: newStato });
-      toast.success(newStato === "effettuato" ? "Segnato come effettuato" : "Segnato come non presentato");
+      // Se lo stato è già quello selezionato, torna a "da_fare"
+      const statoToSet = editingAppointment.stato === newStato ? "da_fare" : newStato;
+      await apiClient.put(`/appointments/${editingAppointment.id}`, { stato: statoToSet });
+      
+      if (statoToSet === "da_fare") {
+        toast.success("Stato resettato");
+      } else if (statoToSet === "effettuato") {
+        toast.success("Segnato come effettuato");
+      } else {
+        toast.success("Segnato come non presentato");
+      }
+      
       setEditDialogOpen(false);
       setEditingAppointment(null);
       fetchData();
